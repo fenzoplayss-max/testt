@@ -293,8 +293,19 @@ For regular conversation or explanations, just respond with text (not JSON)."""
             messages.extend(self.conversation_history)
             
             # Get AI response
-            response = model.generate_content(messages)
-            response_text = response.text.strip()
+            try:
+                response = model.generate_content(messages)
+                response_text = response.text.strip()
+            except Exception as e:
+                error_msg = str(e)
+                if "RESOURCE_EXHAUSTED" in error_msg or "quota" in error_msg.lower():
+                    return {
+                        "error": "API quota exceeded. Please wait ~25 seconds and try again, or check your Gemini API billing settings.",
+                        "completed": False,
+                        "actions_taken": 0,
+                        "retry_after": 25
+                    }
+                raise
             
             # Try to parse as JSON action
             try:
