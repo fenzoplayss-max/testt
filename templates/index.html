@@ -518,6 +518,11 @@
                     
                     addMessage(responseText, 'ai');
                 }
+                
+                // Re-enable input after successful response
+                userInput.disabled = false;
+                sendBtn.disabled = false;
+                userInput.focus();
             } catch (error) {
                 removeTypingIndicator();
                 addMessage(`❌ Error: ${error.message}`, 'ai');
