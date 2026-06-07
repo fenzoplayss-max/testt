@@ -498,7 +498,13 @@
                 removeTypingIndicator();
 
                 if (data.error) {
-                    addMessage(`❌ Error: ${data.error}`, 'ai');
+                    let errorMsg = `❌ Error: ${data.error}`;
+                    if (data.retry_after) {
+                        errorMsg += `<br><small>Retrying in ${data.retry_after} seconds...</small>`;
+                        setTimeout(() => sendMessage(message), data.retry_after * 1000);
+                        return; // Don't re-enable input yet
+                    }
+                    addMessage(errorMsg, 'ai');
                 } else {
                     let responseText = formatResponse(data.response);
                     
@@ -515,11 +521,10 @@
             } catch (error) {
                 removeTypingIndicator();
                 addMessage(`❌ Error: ${error.message}`, 'ai');
-            } finally {
                 userInput.disabled = false;
                 sendBtn.disabled = false;
                 userInput.focus();
-                checkStatus(); // Update status
+                checkStatus();
             }
         }
 
