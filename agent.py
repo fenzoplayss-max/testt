@@ -26,6 +26,7 @@ if os.name == 'nt':  # Windows
 else:
     WORKSPACE_ROOT = "/workspace"
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+HISTORY_FILE = os.path.join(WORKSPACE_ROOT, 'conversation_history.json')
 
 # Configure Gemini API (suppress deprecation warning for now)
 import warnings
@@ -378,7 +379,90 @@ def chat():
 def reset():
     """Reset the conversation"""
     agent.reset()
+    save_history()
     return jsonify({"success": True, "message": "Conversation reset"})
+
+
+def load_history():
+    """Load conversation history from file"""
+    global agent
+    if os.path.exists(HISTORY_FILE):
+        try:
+            with open(HISTORY_FILE, 'r', encoding='utf-8') as f:
+                history = json.load(f)
+                agent.conversation_history = history
+                return True
+        except Exception as e:
+            print(f"Error loading history: {e}")
+    return False
+
+
+def save_history():
+    """Save conversation history to file"""
+    try:
+        with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
+            json.dump(agent.conversation_history, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        print(f"Error saving history: {e}")
+        return False
+
+
+@app.route('/api/history/load', methods=['GET'])
+def get_history():
+    """Load and return conversation history"""
+    if load_history():
+        return jsonify({
+            "success": True, 
+            "history": agent.conversation_history,
+            "message": f"Loaded {len(agent.conversation_history)} messages"
+        })
+    return jsonify({"success": True, "history": [], "message": "No history found"})
+
+
+@app.route('/api/history/save', methods=['POST'])
+def save_history_endpoint():
+    """Save conversation history"""
+    if save_history():
+        return jsonify({"success": True, "message": "History saved"})
+    return jsonify({"success": False, "message": "Failed to save history"}), 500
+
+
+@app.route('/api/history/clear', methods=['POST'])
+def clear_history_endpoint():
+    """Clear conversation history"""
+    agent.reset()
+    if os.path.exists(HISTORY_FILE):
+        os.remove(HISTORY_FILE)
+    return jsonify({"success": True, "message": "History cleared"})
+
+
+@app.route('/api/workspace/change', methods=['POST'])
+def change_workspace():
+    """Change workspace directory"""
+    data = request.json
+    new_path = data.get('path', '')
+    
+    if not new_path:
+        return jsonify({"error": "No path provided"}), 400
+    
+    # Validate path exists and is a directory
+    if not os.path.exists(new_path):
+        return jsonify({"error": "Path does not exist"}), 400
+    
+    if not os.path.isdir(new_path):
+        return jsonify({"error": "Path is not a directory"}), 400
+    
+    # Update agent's file system root
+    agent.fs.root_dir = new_path
+    global WORKSPACE_ROOT
+    WORKSPACE_ROOT = new_path
+    
+    return jsonify({
+        "success": True, 
+        "message": f"Workspace changed to: {new_path}",
+        "path": new_path
+    })
 
 
 @app.route('/api/files/list', methods=['GET'])

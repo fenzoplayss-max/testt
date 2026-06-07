@@ -299,6 +299,57 @@
         .api-warning.show {
             display: block;
         }
+
+        /* Workspace selector */
+        .workspace-selector {
+            padding: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .workspace-btn {
+            width: 100%;
+            padding: 10px;
+            background: rgba(0, 217, 255, 0.2);
+            border: 1px solid rgba(0, 217, 255, 0.4);
+            border-radius: 6px;
+            color: #00d9ff;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .workspace-btn:hover {
+            background: rgba(0, 217, 255, 0.3);
+            border-color: #00d9ff;
+        }
+
+        .history-controls {
+            display: flex;
+            gap: 5px;
+            margin-top: 10px;
+        }
+
+        .history-btn {
+            flex: 1;
+            padding: 6px 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 5px;
+            color: #e4e4e4;
+            cursor: pointer;
+            font-size: 0.75em;
+            transition: all 0.2s;
+        }
+
+        .history-btn:hover {
+            background: rgba(0, 217, 255, 0.2);
+            border-color: #00d9ff;
+        }
     </style>
 </head>
 <body>
@@ -313,6 +364,20 @@
             <div class="api-warning" id="apiWarning">
                 ⚠️ <strong>API Key Required!</strong><br>
                 Set GEMINI_API_KEY environment variable to use the agent.
+            </div>
+
+            <div class="workspace-selector">
+                <button class="workspace-btn" onclick="selectWorkspace()">
+                    📂 Change Workspace
+                </button>
+                <div style="margin-top: 8px; font-size: 0.75em; color: #888;" id="currentWorkspace">
+                    Current: /workspace
+                </div>
+                <div class="history-controls">
+                    <button class="history-btn" onclick="loadHistory()" title="Load previous conversation">📜 Load</button>
+                    <button class="history-btn" onclick="saveHistory()" title="Save conversation">💾 Save</button>
+                    <button class="history-btn" onclick="clearHistory()" title="Clear history">🗑️ Clear</button>
+                </div>
             </div>
 
             <div class="file-explorer" id="fileExplorer">
@@ -517,6 +582,9 @@
                     }
                     
                     addMessage(responseText, 'ai');
+                    
+                    // Auto-save history after successful response
+                    saveHistory();
                 }
                 
                 // Re-enable input after successful response
@@ -576,12 +644,109 @@
 
         // Load initial directory
         loadDirectory('.');
+        
+        // Load history on startup
+        loadHistory();
 
         // Auto-resize textarea
         userInput.addEventListener('input', function() {
             this.style.height = 'auto';
             this.style.height = Math.min(this.scrollHeight, 150) + 'px';
         });
+        
+        async function selectWorkspace() {
+            // Use a simple prompt for now - in a real app you'd use a proper file picker dialog
+            const path = prompt('Enter the full path to your workspace directory:');
+            if (path) {
+                try {
+                    const response = await fetch('/api/workspace/change', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ path })
+                    });
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        document.getElementById('currentWorkspace').textContent = `Current: ${path}`;
+                        addMessage(`✅ Workspace changed to: <code>${path}</code>`, 'ai');
+                        loadDirectory('.');
+                    } else {
+                        alert(`Error: ${data.error || 'Failed to change workspace'}`);
+                    }
+                } catch (error) {
+                    alert(`Error: ${error.message}`);
+                }
+            }
+        }
+        
+        async function loadHistory() {
+            try {
+                const response = await fetch('/api/history/load');
+                const data = await response.json();
+                
+                if (data.success && data.history.length > 0) {
+                    chatContainer.innerHTML = '<div class="message ai-message">📜 Loaded previous conversation.</div>';
+                    
+                    // Re-display conversation history
+                    data.history.forEach(msg => {
+                        const type = msg.role === 'user' ? 'user' : 'ai';
+                        let content = escapeHtml(msg.parts[0]);
+                        
+                        // Format AI responses with action indicators
+                        if (type === 'ai' && content.includes('I will perform this action')) {
+                            content = `<div class="action-indicator\">⚙️ Working...</div>` + content;
+                        }
+                        
+                        addMessage(content, type);
+                    });
+                    
+                    addMessage('✅ Conversation history loaded. You can continue where you left off!', 'ai');
+                } else {
+                    addMessage('ℹ️ No saved conversation history found.', 'ai');
+                }
+            } catch (error) {
+                console.error('Error loading history:', error);
+                addMessage(`❌ Error loading history: ${error.message}`, 'ai');
+            }
+        }
+        
+        async function saveHistory() {
+            try {
+                const response = await fetch('/api/history/save', { method: 'POST' });
+                const data = await response.json();
+                
+                if (data.success) {
+                    addMessage('💾 Conversation saved successfully!', 'ai');
+                } else {
+                    addMessage(`❌ Error saving: ${data.message}`, 'ai');
+                }
+            } catch (error) {
+                console.error('Error saving history:', error);
+                addMessage(`❌ Error saving history: ${error.message}`, 'ai');
+            }
+        }
+        
+        async function clearHistory() {
+            if (!confirm('Are you sure you want to clear the conversation history? This cannot be undone.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/history/clear', { method: 'POST' });
+                const data = await response.json();
+                
+                if (data.success) {
+                    chatContainer.innerHTML = `
+                        <div class="message ai-message">
+                            🗑️ History cleared! How can I help you now?
+                        </div>
+                    `;
+                    document.getElementById('currentWorkspace').textContent = `Current: ${window.location.pathname.includes('/workspace') ? '/workspace' : window.location.pathname}`;
+                }
+            } catch (error) {
+                console.error('Error clearing history:', error);
+            }
+        }
     </script>
 </body>
 </html>
