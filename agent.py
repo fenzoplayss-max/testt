@@ -20,14 +20,20 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-# Configuration
-WORKSPACE_ROOT = "/workspace"
+# Configuration - Use current directory on Windows, /workspace on Linux/Mac
+if os.name == 'nt':  # Windows
+    WORKSPACE_ROOT = os.getcwd()
+else:
+    WORKSPACE_ROOT = "/workspace"
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
-# Configure Gemini API
+# Configure Gemini API (suppress deprecation warning for now)
+import warnings
+warnings.filterwarnings('ignore', category=FutureWarning)
+
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel('gemini-2.0-flash-exp')
+    model = genai.GenerativeModel('gemini-1.5-flash')
 else:
     model = None
 
@@ -404,10 +410,16 @@ def execute_command():
 @app.route('/api/status', methods=['GET'])
 def get_status():
     """Get system status"""
+    try:
+        disk_usage = psutil.disk_usage(WORKSPACE_ROOT).percent
+    except FileNotFoundError:
+        # Fallback for Windows or invalid paths
+        disk_usage = psutil.disk_usage(os.getcwd()).percent
+    
     return jsonify({
         "cpu_percent": psutil.cpu_percent(),
         "memory_percent": psutil.virtual_memory().percent,
-        "disk_usage": psutil.disk_usage(WORKSPACE_ROOT).percent,
+        "disk_usage": disk_usage,
         "workspace": WORKSPACE_ROOT,
         "api_configured": bool(GEMINI_API_KEY)
     })
